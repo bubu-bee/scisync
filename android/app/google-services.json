@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "515386780901",
+    "project_id": "scisync-65fa3",
+    "storage_bucket": "scisync-65fa3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:515386780901:android:f942b571831b0b9543780c",
+        "android_client_info": {
+          "package_name": "com.example.scisync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBI1GAiF28cdKN21M2g3tJ9KaXWOIlXPm0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
