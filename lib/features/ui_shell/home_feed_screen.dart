@@ -21,7 +21,11 @@ class HomeFeedScreen extends StatelessWidget {
       // 2. The Magic Pipeline! We replace ListView with StreamBuilder
       body: StreamBuilder<QuerySnapshot>(
         // We tell it exactly which collection to listen to in real-time
-        stream: FirebaseFirestore.instance.collection('notices').snapshots(),
+        stream: FirebaseFirestore.instance
+            .collection('notices')
+            .orderBy('timestamp', descending: true)
+            .limit(50)
+            .snapshots(),
         builder: (context, snapshot) {
           // State A: Data is still traveling through the cloud
           if (snapshot.connectionState == ConnectionState.waiting) {
