@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'home_feed_screen.dart';
 
 // 1. We use a StatefulWidget because the screen needs to "remember" which tab is clicked.
 class AppNavigation extends StatefulWidget {
@@ -14,9 +15,7 @@ class _AppNavigationState extends State<AppNavigation> {
 
   // 3. This is a list of our "Screens". Right now, they are just empty placeholders.
   final List<Widget> _screens = [
-    const Center(
-      child: Text("Home Feed Goes Here", style: TextStyle(fontSize: 24)),
-    ),
+    const HomeFeedScreen(),
     const Center(
       child: Text("Calendar Goes Here", style: TextStyle(fontSize: 24)),
     ),
@@ -42,12 +41,7 @@ class _AppNavigationState extends State<AppNavigation> {
       // 6. The actual Bottom Navigation Bar
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        selectedItemColor: const Color.fromARGB(
-          255,
-          131,
-          31,
-          31,
-        ), // Modern accent color
+        selectedItemColor: Colors.red[900], // Modern accent color
         unselectedItemColor: Colors.grey,
         type:
             BottomNavigationBarType.fixed, // Keeps icons from shifting weirdly
