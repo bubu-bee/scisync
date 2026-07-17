@@ -33,10 +33,7 @@ class DefaultFirebaseOptions {
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -56,7 +53,6 @@ class DefaultFirebaseOptions {
     projectId: 'scisync-65fa3',
     storageBucket: 'scisync-65fa3.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDnK5bUVrYGqSJ9zFroR2aVg86oC-5E1Ng',
     appId: '1:515386780901:ios:4bbef02d8b8a72c443780c',
@@ -64,5 +60,14 @@ class DefaultFirebaseOptions {
     projectId: 'scisync-65fa3',
     storageBucket: 'scisync-65fa3.firebasestorage.app',
     iosBundleId: 'com.example.scisync',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyCuu0Gq7jIjlmOznahZA7maKGjiVsp7rtk',
+    appId: '1:515386780901:web:31de4782cd413d0943780c',
+    messagingSenderId: '515386780901',
+    projectId: 'scisync-65fa3',
+    authDomain: 'scisync-65fa3.firebaseapp.com',
+    storageBucket: 'scisync-65fa3.firebasestorage.app',
   );
 }

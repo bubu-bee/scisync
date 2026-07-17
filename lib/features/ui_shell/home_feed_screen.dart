@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // <-- 1. New import for Firebase!
 
 class HomeFeedScreen extends StatelessWidget {
   const HomeFeedScreen({super.key});
@@ -6,38 +7,77 @@ class HomeFeedScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          Colors.grey[100], // Soft background so the white cards pop!
-
+      backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text(
           'SciSync Feed',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.red[900],
+        backgroundColor: Colors.teal,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
 
-      // ListView lets the screen scroll naturally
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          _buildNoticeCard(), // We call your custom card here!
-        ],
+      // 2. The Magic Pipeline! We replace ListView with StreamBuilder
+      body: StreamBuilder<QuerySnapshot>(
+        // We tell it exactly which collection to listen to in real-time
+        stream: FirebaseFirestore.instance.collection('notices').snapshots(),
+        builder: (context, snapshot) {
+          // State A: Data is still traveling through the cloud
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            ); // A nice loading spinner
+          }
+
+          // State B: Something crashed
+          if (snapshot.hasError) {
+            return const Center(child: Text('Error loading notices.'));
+          }
+
+          // State C: The database is empty
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text('No notices found!'));
+          }
+
+          // State D: Success! We have data!
+          final notices = snapshot.data!.docs;
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16.0),
+            itemCount: notices.length,
+            itemBuilder: (context, index) {
+              // We grab the specific document and turn it into a readable Map
+              var data = notices[index].data() as Map<String, dynamic>;
+
+              // We pass the live cloud data into your UI card
+              return _buildNoticeCard(
+                title: data['title'] ?? 'No Title',
+                body: data['description'] ?? 'No Description',
+                tag: data['tag'] ?? 'NOTICE',
+              );
+            },
+          );
+        },
       ),
     );
   }
 
-  // --- YOUR CUSTOM UI COMPONENT ---
-  Widget _buildNoticeCard() {
+  // 3. We update your UI component to accept real data variables instead of hardcoded text!
+  Widget _buildNoticeCard({
+    required String title,
+    required String body,
+    required String tag,
+  }) {
     return Container(
+      margin: const EdgeInsets.only(
+        bottom: 16,
+      ), // Adds spacing if there are multiple cards
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20), // Soft curved edges
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          // This creates the 3D floating Neumorphic effect
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
@@ -48,38 +88,35 @@ class HomeFeedScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. The AI Tag
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.red[100],
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Text(
-              "EXAM",
-              style: TextStyle(
+            child: Text(
+              tag.toUpperCase(), // Uses the tag directly from Firebase
+              style: const TextStyle(
                 color: Colors.red,
                 fontWeight: FontWeight.bold,
                 fontSize: 12,
               ),
             ),
           ),
-          const SizedBox(height: 12), // Whitespace
-          // 2. The Main Title
-          const Text(
-            "Data Structures Mid-Term",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          const SizedBox(height: 12),
+
+          Text(
+            title, // Uses the title directly from Firebase
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
 
-          // 3. The Notice Body
           Text(
-            "Attention 23com! The mid-term exam is scheduled for next week at 09:00 AM in the Main Hall.",
+            body, // Uses the description directly from Firebase
             style: TextStyle(color: Colors.grey[700]),
           ),
           const SizedBox(height: 16),
 
-          // 4. The Action Button
           Align(
             alignment: Alignment.centerRight,
             child: ElevatedButton.icon(
@@ -89,7 +126,7 @@ class HomeFeedScreen extends StatelessWidget {
               icon: const Icon(Icons.calendar_month),
               label: const Text("Add to Calendar"),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red[900],
+                backgroundColor: Colors.teal,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),

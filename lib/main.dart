@@ -8,16 +8,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // The Safety Blanket (try-catch)
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    debugPrint("Firebase Connected Successfully!"); // Changed this!
-  } catch (e) {
-    debugPrint(
-      "Skipping Firebase: Running on an unsupported platform for testing.",
-    ); // And this!
-  }
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const MyApp());
 }
