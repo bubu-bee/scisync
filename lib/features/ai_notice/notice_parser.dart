@@ -14,7 +14,7 @@ class NoticeParser {
           'tag': Schema.enumString(enumValues: ['EXAM' , 'EVENTS' , 'CANCELLATION' , 'GENERAL'], ),
           'summary': Schema.string(
             description: 'One sentence, under 30 words, that a student can scan in 3 seconds.',
-     -+     ),
+          ),
         },
         optionalProperties: ['tag', 'summary'],
       ),
