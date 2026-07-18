@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_feed_screen.dart';
+import 'admin_notice_form.dart';
 
 // 1. We use a StatefulWidget because the screen needs to "remember" which tab is clicked.
 class AppNavigation extends StatefulWidget {
@@ -25,8 +26,27 @@ class _AppNavigationState extends State<AppNavigation> {
     const Center(
       child: Text("SciBot Chat Goes Here", style: TextStyle(fontSize: 24)),
     ),
-    const Center(
-      child: Text("Profile Goes Here", style: TextStyle(fontSize: 24)),
+    Center(
+      child: Builder(
+        // We use a Builder to get the correct context for navigation
+        builder: (context) => ElevatedButton.icon(
+          onPressed: () {
+            // This pushes the new Admin form over the screen!
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AdminUploadScreen(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.admin_panel_settings),
+          label: const Text("Secret Admin Menu"),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.redAccent,
+            foregroundColor: Colors.white,
+          ),
+        ),
+      ),
     ),
   ];
 
