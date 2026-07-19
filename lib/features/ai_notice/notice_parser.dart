@@ -8,12 +8,16 @@ class NoticeParser {
   final _model = FirebaseAI.googleAI().generativeModel(
     model: 'gemini-2.5-flash', // Stable, hackathon-friendly model
     generationConfig: GenerationConfig(
-      responseMimeType: 'application/json', // Forces Gemini to speak only valid JSON[cite: 1]
+      responseMimeType:
+          'application/json', // Forces Gemini to speak only valid JSON[cite: 1]
       responseSchema: Schema.object(
         properties: {
-          'tag': Schema.enumString(enumValues: ['EXAM' , 'EVENTS' , 'CANCELLATION' , 'GENERAL'], ),
+          'tag': Schema.enumString(
+            enumValues: ['EXAM', 'EVENTS', 'CANCELLATION', 'GENERAL'],
+          ),
           'summary': Schema.string(
-            description: 'One sentence, under 30 words, that a student can scan in 3 seconds.',
+            description:
+                'One sentence, under 30 words, that a student can scan in 3 seconds.',
           ),
         },
         optionalProperties: ['tag', 'summary'],
@@ -29,7 +33,7 @@ class NoticeParser {
     ),
   );
 
-  /// Receives notice text from the admin form, analyzes it with Gemini, 
+  /// Receives notice text from the admin form, analyzes it with Gemini,
   /// and returns a structured map containing 'tag' and 'summary'[cite: 1].
   Future<Map<String, dynamic>> analyzeNotice({
     required String title,
@@ -40,7 +44,7 @@ class NoticeParser {
       final response = await _model.generateContent([
         Content.text('Title: $title\nDescription: $description'),
       ]);
-      
+
       // Safeguard against null text responses
       if (response.text == null) {
         return {'tag': 'GENERAL', 'summary': title};
@@ -51,8 +55,8 @@ class NoticeParser {
     } catch (e) {
       // Universal Guardrail: Never let a network or API timeout crash the app demo[cite: 1]
       return {
-        'tag': 'GENERAL', 
-        'summary': title // Fallback to the original title if AI fails[cite: 1]
+        'tag': 'GENERAL',
+        'summary': title, // Fallback to the original title if AI fails[cite: 1]
       };
     }
   }
