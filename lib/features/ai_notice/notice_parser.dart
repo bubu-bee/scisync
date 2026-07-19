@@ -1,63 +1,65 @@
-// lib/features/ai_notice/notice_parser.dart
-
 import 'package:firebase_ai/firebase_ai.dart';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 class NoticeParser {
-  // Define the Gemini model configuration with strict schema enforcement
+  // Using the refined, strict-classifier model setup
   final _model = FirebaseAI.googleAI().generativeModel(
-    model: 'gemini-2.5-flash', // Stable, hackathon-friendly model
+    model: 'gemini-3.5-flash',
     generationConfig: GenerationConfig(
-      responseMimeType:
-          'application/json', // Forces Gemini to speak only valid JSON[cite: 1]
+      responseMimeType: 'application/json',
       responseSchema: Schema.object(
         properties: {
           'tag': Schema.enumString(
-            enumValues: ['EXAM', 'EVENTS', 'CANCELLATION', 'GENERAL'],
+            enumValues: ['EXAM', 'CA', 'EVENT', 'GENERAL'],
           ),
           'summary': Schema.string(
             description:
-                'One sentence, under 30 words, that a student can scan in 3 seconds.',
+                'One sentence, under 15 words, that a student can scan in 3 seconds.',
           ),
         },
-        optionalProperties: ['tag', 'summary'],
+        // We force these two to always be present so the UI doesn't crash
       ),
     ),
     systemInstruction: Content.system(
-      'You classify university notices for students. Read the title and description '
-      'and return the single best tag plus a short punchy summary. '
-      'EXAM = tests, quizzes, continuous assessments, exam schedule changes. '
-      'EVENT = workshops, seminars, club activities, registration deadlines. '
-      'CANCELLATION = a class, exam, or event being cancelled or postponed. '
-      'GENERAL = anything else that does not fit the above categories.',
+      'You are a strict academic notice classifier. '
+      '1. EXAM: High stakes tests, finals, mid-terms. '
+      '2. CA: Continuous assessments, quizzes, assignments, lab reports. '
+      '3. EVENT: Workshops, seminars, club activities, parties, registration. '
+      '4. GENERAL: Announcements, library info, general campus updates. '
+      'Return ONLY valid JSON. Do not include any other text.',
     ),
   );
 
-  /// Receives notice text from the admin form, analyzes it with Gemini,
-  /// and returns a structured map containing 'tag' and 'summary'[cite: 1].
   Future<Map<String, dynamic>> analyzeNotice({
     required String title,
     required String description,
   }) async {
     try {
-      // Send the text payload to Gemini
-      final response = await _model.generateContent([
-        Content.text('Title: $title\nDescription: $description'),
-      ]);
+      debugPrint("🤖 [AI] Sending to Gemini...");
 
-      // Safeguard against null text responses
+      final prompt =
+          'Classify this notice. Tag: EXAM, CA, EVENT, or GENERAL. Summary: 15 words.\n'
+          'Title: $title\nDescription: $description';
+
+      final response = await _model.generateContent([Content.text(prompt)]);
+
+      // Check if response exists and is usable
       if (response.text == null) {
-        return {'tag': 'GENERAL', 'summary': title};
+        debugPrint("⚠️ [AI] Response text is NULL");
+        throw Exception("AI returned empty response");
       }
 
-      // Parse and return the pristine JSON structure directly
+      debugPrint("🤖 [AI] Success! RAW: ${response.text}");
       return jsonDecode(response.text!) as Map<String, dynamic>;
-    } catch (e) {
-      // Universal Guardrail: Never let a network or API timeout crash the app demo[cite: 1]
-      return {
-        'tag': 'GENERAL',
-        'summary': title, // Fallback to the original title if AI fails[cite: 1]
-      };
+    } catch (e, stackTrace) {
+      // THIS IS THE MOST IMPORTANT CHANGE:
+      // Instead of hiding the error, we print the FULL stack trace.
+      debugPrint("🔥 [AI ERROR] Caught exception: $e");
+      debugPrint("🔥 [AI ERROR] Stack Trace: $stackTrace");
+
+      // We re-throw so we know it failed, instead of silently returning 'GENERAL'
+      rethrow;
     }
   }
 }

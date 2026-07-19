@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../firestore_data/notice_service.dart';
+import '../ai_notice/notice_parser.dart'; // Officially linked!
 
 class AdminUploadScreen extends StatefulWidget {
   const AdminUploadScreen({super.key});
@@ -9,11 +10,9 @@ class AdminUploadScreen extends StatefulWidget {
 }
 
 class _AdminUploadScreenState extends State<AdminUploadScreen> {
-  // 🧠 The "Brain" of the form: Controllers grab the exact text the admin types!
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
 
-  // Default value for the target batch dropdown
   String _selectedBatch = 'All Students';
   final List<String> _batches = [
     'All Students',
@@ -22,12 +21,62 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
     '2024 Batch',
   ];
 
+  // Loading spinner state
+  bool _isSubmitting = false;
+
   @override
   void dispose() {
-    // 🧹 Golden Rule: Always dispose controllers when leaving the screen to save RAM!
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  // The Magic Database + AI Function
+  Future<void> _submitNotice() async {
+    if (_titleController.text.isEmpty || _descriptionController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields!')),
+      );
+      return;
+    }
+
+    // 1. Turn on the loading spinner!
+    setState(() => _isSubmitting = true);
+
+    try {
+      // 2. Ask Lahiru's AI engine for the tag + summary!
+      final aiResult = await NoticeParser().analyzeNotice(
+        title: _titleController.text,
+        description: _descriptionController.text,
+      );
+
+      // 3. Save it ALL to Firebase!
+      await NoticeService().postNotice({
+        'title': _titleController.text,
+        'description': _descriptionController.text,
+        'targetBatch': _selectedBatch,
+        'tag': aiResult['tag'], // AI decides if it's an EXAM, EVENT, etc.
+        'summary': aiResult['summary'], // AI generated summary!
+        'imageUrl': '',
+        'likes': 0,
+        'hearts': 0,
+      });
+
+      // 4. Success UI
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notice Posted Successfully!')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint("Error saving to database: $e");
+    } finally {
+      // 5. Turn off the spinner
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
   }
 
   @override
@@ -43,13 +92,11 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      // SingleChildScrollView prevents the screen from crashing when the keyboard pops up!
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- 1. TITLE INPUT ---
             const Text(
               "Notice Title",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -69,7 +116,6 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
             ),
             const SizedBox(height: 20),
 
-            // --- 2. DESCRIPTION INPUT ---
             const Text(
               "Description",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -77,7 +123,7 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _descriptionController,
-              maxLines: 4, // Makes it a big, tall text box!
+              maxLines: 4,
               decoration: InputDecoration(
                 hintText: "Type the full event details here...",
                 filled: true,
@@ -90,7 +136,6 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
             ),
             const SizedBox(height: 20),
 
-            // --- 3. TARGET BATCH DROPDOWN ---
             const Text(
               "Target Batch",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -114,8 +159,7 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
                   }).toList(),
                   onChanged: (String? newValue) {
                     setState(() {
-                      _selectedBatch =
-                          newValue!; // Updates the UI instantly when changed
+                      _selectedBatch = newValue!;
                     });
                   },
                 ),
@@ -123,7 +167,6 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
             ),
             const SizedBox(height: 20),
 
-            // --- 4. IMAGE UPLOAD PLACEHOLDER ---
             const Text(
               "Attach Image (Optional)",
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -131,9 +174,7 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
             const SizedBox(height: 8),
             GestureDetector(
               onTap: () {
-                debugPrint(
-                  "Open Image Gallery!",
-                ); // Supun will add the camera code here!
+                debugPrint("Open Image Gallery!");
               },
               child: Container(
                 height: 100,
@@ -141,7 +182,6 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
-                  // Creates a dashed-looking or solid highlighted border
                   border: Border.all(color: Colors.teal.shade200, width: 2),
                 ),
                 child: const Column(
@@ -166,56 +206,12 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
             ),
             const SizedBox(height: 40),
 
-            // --- 5. SUBMIT BUTTON ---
+            // Submit Button with AI Loading State!
             SizedBox(
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                // We add 'async' because talking to the cloud takes a second
-                onPressed: () async {
-                  // 1. Basic Validation (Don't let them post empty notices!)
-                  if (_titleController.text.isEmpty ||
-                      _descriptionController.text.isEmpty) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please fill in all fields!'),
-                      ),
-                    );
-                    return;
-                  }
-
-                  try {
-                    // 2. The Firebase Write Command
-                    // Tell the Chef to save the data! The Chef handles the timestamp automatically.
-                    await NoticeService().postNotice({
-                      'title': _titleController.text,
-                      'description': _descriptionController.text,
-                      'targetBatch': _selectedBatch,
-                      'tag': 'UPDATE',
-                      'imageUrl': '',
-                      'likes': 0, // NEW: Start likes at 0
-                      'hearts': 0, // NEW: Start hearts at 0
-                    });
-
-                    // 4. Clear the text boxes so it's fresh for the next one
-                    _titleController.clear();
-                    _descriptionController.clear();
-
-                    // 5. Show a success message and close the secret admin screen!
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Notice Posted Successfully!'),
-                        ),
-                      );
-                      Navigator.pop(
-                        context,
-                      ); // Takes you back to the Profile tab
-                    }
-                  } catch (e) {
-                    debugPrint("Error saving to database: $e");
-                  }
-                },
+                onPressed: _isSubmitting ? null : _submitNotice,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.teal,
                   foregroundColor: Colors.white,
@@ -223,10 +219,22 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text(
-                  "Post Notice",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 3,
+                        ),
+                      )
+                    : const Text(
+                        "Post Notice",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ],
