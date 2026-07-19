@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../firestore_data/notice_service.dart';
 
 class AdminUploadScreen extends StatefulWidget {
   const AdminUploadScreen({super.key});
@@ -186,16 +186,15 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
 
                   try {
                     // 2. The Firebase Write Command
-                    await FirebaseFirestore.instance.collection('notices').add({
+                    // Tell the Chef to save the data! The Chef handles the timestamp automatically.
+                    await NoticeService().postNotice({
                       'title': _titleController.text,
                       'description': _descriptionController.text,
                       'targetBatch': _selectedBatch,
-                      // For now, we hardcode the tag until your AI lead builds the generator!
                       'tag': 'UPDATE',
-                      // For now, image is blank until we build the photo upload
                       'imageUrl': '',
-                      // 3. The Magic Timestamp! Firebase gets the exact server time automatically.
-                      'timestamp': FieldValue.serverTimestamp(),
+                      'likes': 0, // NEW: Start likes at 0
+                      'hearts': 0, // NEW: Start hearts at 0
                     });
 
                     // 4. Clear the text boxes so it's fresh for the next one

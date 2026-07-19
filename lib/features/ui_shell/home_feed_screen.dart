@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // <-- 1. New import for Firebase!
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../firestore_data/notice_service.dart';
 
 class HomeFeedScreen extends StatelessWidget {
   const HomeFeedScreen({super.key});
@@ -17,44 +18,43 @@ class HomeFeedScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-
-      // 2. The Magic Pipeline! We replace ListView with StreamBuilder
       body: StreamBuilder<QuerySnapshot>(
-        // We tell it exactly which collection to listen to in real-time
-        stream: FirebaseFirestore.instance.collection('notices').snapshots(),
+        stream: NoticeService().streamNotices(batchFilter: '2024 Batch'),
         builder: (context, snapshot) {
-          // State A: Data is still traveling through the cloud
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            ); // A nice loading spinner
+            return const Center(child: CircularProgressIndicator());
           }
 
-          // State B: Something crashed
           if (snapshot.hasError) {
+            debugPrint("🔥 FIREBASE ERROR: ${snapshot.error}");
             return const Center(child: Text('Error loading notices.'));
           }
 
-          // State C: The database is empty
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
             return const Center(child: Text('No notices found!'));
           }
 
-          // State D: Success! We have data!
           final notices = snapshot.data!.docs;
 
           return ListView.builder(
             padding: const EdgeInsets.all(16.0),
             itemCount: notices.length,
             itemBuilder: (context, index) {
-              // We grab the specific document and turn it into a readable Map
+              // 1. Grab the specific document ID and the data map
+              var docId = notices[index].id;
               var data = notices[index].data() as Map<String, dynamic>;
 
-              // We pass the live cloud data into your UI card
+              // 2. Safely extract likes and hearts (default to 0 if they don't exist yet)
+              int likesCount = data['likes'] ?? 0;
+              int heartsCount = data['hearts'] ?? 0;
+
               return _buildNoticeCard(
+                docId: docId, // Pass the ID to the card!
                 title: data['title'] ?? 'No Title',
                 body: data['description'] ?? 'No Description',
                 tag: data['tag'] ?? 'NOTICE',
+                likes: likesCount, // Pass the likes!
+                hearts: heartsCount, // Pass the hearts!
               );
             },
           );
@@ -63,23 +63,24 @@ class HomeFeedScreen extends StatelessWidget {
     );
   }
 
-  // 3. We update your UI component to accept real data variables instead of hardcoded text!
+  // Updated Widget to accept docId, likes, and hearts
   Widget _buildNoticeCard({
+    required String docId,
     required String title,
     required String body,
     required String tag,
+    required int likes,
+    required int hearts,
   }) {
     return Container(
-      margin: const EdgeInsets.only(
-        bottom: 16,
-      ), // Adds spacing if there are multiple cards
+      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -95,7 +96,7 @@ class HomeFeedScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              tag.toUpperCase(), // Uses the tag directly from Firebase
+              tag.toUpperCase(),
               style: const TextStyle(
                 color: Colors.red,
                 fontWeight: FontWeight.bold,
@@ -106,33 +107,115 @@ class HomeFeedScreen extends StatelessWidget {
           const SizedBox(height: 12),
 
           Text(
-            title, // Uses the title directly from Firebase
+            title,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
 
-          Text(
-            body, // Uses the description directly from Firebase
-            style: TextStyle(color: Colors.grey[700]),
-          ),
-          const SizedBox(height: 16),
+          Text(body, style: TextStyle(color: Colors.grey[700])),
 
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                debugPrint("Add to Calendar clicked!");
-              },
-              icon: const Icon(Icons.calendar_month),
-              label: const Text("Add to Calendar"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.teal,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+          // --- THE NEW SMART REACTION BAR ---
+          const SizedBox(height: 8),
+          const Divider(height: 20, thickness: 1, color: Colors.black12),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment
+                .spaceBetween, // Pushes buttons to opposite sides
+            children: [
+              // 1. Left Side: The Reactions (Always visible)
+              Row(
+                children: [
+                  // LIKE BUTTON
+                  TextButton.icon(
+                    onPressed: () =>
+                        NoticeService().addReaction(docId, 'likes'),
+                    icon: const Icon(
+                      Icons.thumb_up_alt_outlined,
+                      color: Colors.grey,
+                      size: 20,
+                    ),
+                    label: Text(
+                      '$likes',
+                      style: const TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // HEART BUTTON
+                  TextButton.icon(
+                    onPressed: () =>
+                        NoticeService().addReaction(docId, 'hearts'),
+                    icon: const Icon(
+                      Icons.favorite_border,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
+                    label: Text(
+                      '$hearts',
+                      style: const TextStyle(color: Colors.grey, fontSize: 16),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
               ),
-            ),
+
+              // 2. Right Side: THE SMART AI UI LOGIC
+              Builder(
+                builder: (context) {
+                  // Make sure the tag is uppercase so our logic matches perfectly
+                  String safeTag = tag.toUpperCase();
+
+                  if (safeTag == 'EXAM' || safeTag == 'CA') {
+                    // SCENARIO 1: Mandatory academic events! Show the automated text.
+                    return Row(
+                      children: const [
+                        Icon(Icons.check_circle, color: Colors.green, size: 16),
+                        SizedBox(width: 4),
+                        Text(
+                          "Added",
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    );
+                  } else if (safeTag == 'EVENT') {
+                    // SCENARIO 2: Optional events! Show the Add button.
+                    return ElevatedButton.icon(
+                      onPressed: () {
+                        debugPrint("Add Event to Calendar clicked!");
+                      },
+                      icon: const Icon(Icons.calendar_month, size: 18),
+                      label: const Text("Add"),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.teal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    );
+                  } else {
+                    // SCENARIO 3: General Notices / Updates. Show absolutely nothing!
+                    return const SizedBox.shrink();
+                  }
+                },
+              ),
+            ],
           ),
         ],
       ),
