@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_feed_screen.dart';
-import 'admin_notice_form.dart';
+import 'profile_screen.dart'; // Import the real Profile screen
 
-// 1. We use a StatefulWidget because the screen needs to "remember" which tab is clicked.
 class AppNavigation extends StatefulWidget {
   const AppNavigation({super.key});
 
@@ -11,62 +10,35 @@ class AppNavigation extends StatefulWidget {
 }
 
 class _AppNavigationState extends State<AppNavigation> {
-  // 2. This variable keeps track of which tab we are currently on (starts at 0 - Home).
   int _currentIndex = 0;
 
-  // 3. This is a list of our "Screens". Right now, they are just empty placeholders.
+  // The 5 primary tabs of your app structure
   final List<Widget> _screens = [
-    const HomeFeedScreen(),
+    const HomeFeedScreen(), // Index 0: Home Feed
     const Center(
       child: Text("Calendar Goes Here", style: TextStyle(fontSize: 24)),
-    ),
+    ), // Index 1: Calendar
     const Center(
       child: Text("Live Schedule Goes Here", style: TextStyle(fontSize: 24)),
-    ),
+    ), // Index 2: Schedule
     const Center(
       child: Text("SciBot Chat Goes Here", style: TextStyle(fontSize: 24)),
-    ),
-    Center(
-      child: Builder(
-        // We use a Builder to get the correct context for navigation
-        builder: (context) => ElevatedButton.icon(
-          onPressed: () {
-            // This pushes the new Admin form over the screen!
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const AdminUploadScreen(),
-              ),
-            );
-          },
-          icon: const Icon(Icons.admin_panel_settings),
-          label: const Text("Secret Admin Menu"),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.redAccent,
-            foregroundColor: Colors.white,
-          ),
-        ),
-      ),
-    ),
+    ), // Index 3: Chat
+    const ProfileScreen(), // Index 4: Real User Profile
   ];
 
   @override
   Widget build(BuildContext context) {
-    // 4. Scaffold is the master blank canvas for any Flutter screen.
     return Scaffold(
-      backgroundColor: Colors.grey[100], // A nice soft modern background color
-      // 5. The body displays whichever screen matches our _currentIndex
+      backgroundColor: Colors.grey[100],
       body: _screens[_currentIndex],
-
-      // 6. The actual Bottom Navigation Bar
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
-        selectedItemColor: Colors.red[900], // Modern accent color
+        selectedItemColor:
+            Colors.teal[800], // Modern teal accent matching your theme
         unselectedItemColor: Colors.grey,
-        type:
-            BottomNavigationBarType.fixed, // Keeps icons from shifting weirdly
+        type: BottomNavigationBarType.fixed,
         onTap: (index) {
-          // 7. setState tells Flutter: "Hey, the index changed! Redraw the screen!"
           setState(() {
             _currentIndex = index;
           });

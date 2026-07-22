@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 class NoticeParser {
   // Using the refined, strict-classifier model setup
   final _model = FirebaseAI.googleAI().generativeModel(
-    model: 'gemini-3.5-flash',
+    model: 'gemini-3.1-flash-lite',
     generationConfig: GenerationConfig(
       responseMimeType: 'application/json',
       responseSchema: Schema.object(

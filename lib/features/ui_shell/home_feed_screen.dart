@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firestore_data/notice_service.dart';
+import 'ai_banner_widget.dart'; // Import the AI Summary Banner
 
 class HomeFeedScreen extends StatelessWidget {
   const HomeFeedScreen({super.key});
@@ -36,34 +37,45 @@ class HomeFeedScreen extends StatelessWidget {
 
           final notices = snapshot.data!.docs;
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16.0),
-            itemCount: notices.length,
-            itemBuilder: (context, index) {
-              // 1. Grab the specific document ID and the data map
-              var docId = notices[index].id;
-              var data = notices[index].data() as Map<String, dynamic>;
+          return Column(
+            children: [
+              // 1. The AI Summary Banner sits permanently at the top!
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: AiBannerWidget(),
+              ),
 
-              // 2. Safely extract likes and hearts (default to 0 if they don't exist yet)
-              int likesCount = data['likes'] ?? 0;
-              int heartsCount = data['hearts'] ?? 0;
+              // 2. The Rest of the Feed ListView
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: notices.length,
+                  itemBuilder: (context, index) {
+                    var docId = notices[index].id;
+                    var data = notices[index].data() as Map<String, dynamic>;
 
-              return _buildNoticeCard(
-                docId: docId, // Pass the ID to the card!
-                title: data['title'] ?? 'No Title',
-                body: data['description'] ?? 'No Description',
-                tag: data['tag'] ?? 'NOTICE',
-                likes: likesCount, // Pass the likes!
-                hearts: heartsCount, // Pass the hearts!
-              );
-            },
+                    int likesCount = data['likes'] ?? 0;
+                    int heartsCount = data['hearts'] ?? 0;
+
+                    return _buildNoticeCard(
+                      docId: docId,
+                      title: data['title'] ?? 'No Title',
+                      body: data['description'] ?? 'No Description',
+                      tag: data['tag'] ?? 'NOTICE',
+                      likes: likesCount,
+                      hearts: heartsCount,
+                    );
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),
     );
   }
 
-  // Updated Widget to accept docId, likes, and hearts
+  // Notice Card Widget Layout
   Widget _buildNoticeCard({
     required String docId,
     required String title,
@@ -114,13 +126,12 @@ class HomeFeedScreen extends StatelessWidget {
 
           Text(body, style: TextStyle(color: Colors.grey[700])),
 
-          // --- THE NEW SMART REACTION BAR ---
+          // --- REACTION & ACTION BAR ---
           const SizedBox(height: 8),
           const Divider(height: 20, thickness: 1, color: Colors.black12),
 
           Row(
-            mainAxisAlignment: MainAxisAlignment
-                .spaceBetween, // Pushes buttons to opposite sides
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // 1. Left Side: The Reactions (Always visible)
               Row(
@@ -170,7 +181,6 @@ class HomeFeedScreen extends StatelessWidget {
               // 2. Right Side: THE SMART AI UI LOGIC
               Builder(
                 builder: (context) {
-                  // Make sure the tag is uppercase so our logic matches perfectly
                   String safeTag = tag.toUpperCase();
 
                   if (safeTag == 'EXAM' || safeTag == 'CA') {

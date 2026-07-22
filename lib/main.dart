@@ -2,13 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
-import 'features/ui_shell/app_navigation.dart';
+// Import your new Auth Wrapper!
+import 'features/ui_shell/auth_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // The Safety Blanket (try-catch)
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint("Firebase init error: $e");
+  }
 
   runApp(const MyApp());
 }
@@ -26,8 +33,8 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      // This points straight to your new navigation bar!
-      home: const AppNavigation(),
+      // The crucial change: Start the app at the Wrapper, NOT AppNavigation
+      home: const AuthWrapper(),
     );
   }
 }
