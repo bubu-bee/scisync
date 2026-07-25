@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firestore_data/notice_service.dart';
 import 'ai_banner_widget.dart'; // Import the AI Summary Banner
+import 'profile_screen.dart'; // <-- 1. NEW IMPORT FOR YOUR 3-TAB UX
 
 class HomeFeedScreen extends StatelessWidget {
   const HomeFeedScreen({super.key});
@@ -18,7 +19,28 @@ class HomeFeedScreen extends StatelessWidget {
         backgroundColor: Colors.teal,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          // <-- 2. THE NEW SMART PROFILE BUTTON -->
+          GestureDetector(
+            onTap: () {
+              // Pushes the profile over the whole app, hiding the bottom bar!
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
+            },
+            child: const Padding(
+              padding: EdgeInsets.only(right: 16.0),
+              child: CircleAvatar(
+                backgroundColor: Colors.white, // White circle on Teal AppBar
+                child: Icon(Icons.person, color: Colors.teal),
+              ),
+            ),
+          ),
+        ],
       ),
+
+      // <-- EVERYTHING BELOW REMAINS YOUR EXACT, WORKING FIRESTORE LOGIC -->
       body: StreamBuilder<QuerySnapshot>(
         stream: NoticeService().streamNotices(batchFilter: '2024 Batch'),
         builder: (context, snapshot) {
@@ -72,10 +94,37 @@ class HomeFeedScreen extends StatelessWidget {
           );
         },
       ),
+      floatingActionButton: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.tealAccent.withValues(alpha: 0.6), // The AI Glow!
+              blurRadius: 15,
+              spreadRadius: 2,
+            ),
+          ],
+        ),
+        child: FloatingActionButton(
+          onPressed: () {
+            // TODO: We will replace this with Navigator.push when you upload your friend's code!
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('SciBot initializing...'),
+                backgroundColor: Colors.teal,
+              ),
+            );
+          },
+          backgroundColor: Colors.teal[900], // Dark core
+          foregroundColor: Colors.white,
+          elevation: 0, // We set this to 0 so our custom glow takes over
+          child: const Icon(Icons.smart_toy, size: 28), // A cool robot icon
+        ),
+      ),
     );
   }
 
-  // Notice Card Widget Layout
+  // Notice Card Widget Layout (Unchanged)
   Widget _buildNoticeCard({
     required String docId,
     required String title,

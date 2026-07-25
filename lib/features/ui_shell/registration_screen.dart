@@ -142,7 +142,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _selectedBatch,
+                initialValue: _selectedBatch,
                 decoration: const InputDecoration(
                   labelText: 'Academic Batch',
                   border: OutlineInputBorder(),
