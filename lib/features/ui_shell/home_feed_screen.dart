@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../firestore_data/notice_service.dart';
 import 'ai_banner_widget.dart'; // Import the AI Summary Banner
 import 'profile_screen.dart'; // <-- 1. NEW IMPORT FOR YOUR 3-TAB UX
+import '../schedule_bot/scibot_screen.dart'; // <-- Fixed import (added semicolon and set to same folder)
 
 class HomeFeedScreen extends StatelessWidget {
   const HomeFeedScreen({super.key});
@@ -94,6 +95,8 @@ class HomeFeedScreen extends StatelessWidget {
           );
         },
       ),
+
+      // <-- THE GLOWING SCIBOT BUTTON -->
       floatingActionButton: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
@@ -107,12 +110,10 @@ class HomeFeedScreen extends StatelessWidget {
         ),
         child: FloatingActionButton(
           onPressed: () {
-            // TODO: We will replace this with Navigator.push when you upload your friend's code!
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('SciBot initializing...'),
-                backgroundColor: Colors.teal,
-              ),
+            // FINALLY WIRED UP! Pushes to the SciBot Chat Screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SciBotScreen()),
             );
           },
           backgroundColor: Colors.teal[900], // Dark core
