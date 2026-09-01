@@ -1,132 +1,210 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // NEW: Required for dynamic user batch fetching
 import '../firestore_data/notice_service.dart';
-import 'ai_banner_widget.dart'; // Import the AI Summary Banner
-import 'profile_screen.dart'; // <-- 1. NEW IMPORT FOR YOUR 3-TAB UX
-import '../schedule_bot/scibot_screen.dart'; // <-- Fixed import (added semicolon and set to same folder)
+import 'ai_banner_widget.dart';
+import 'profile_screen.dart';
+import '../schedule_bot/scibot_screen.dart';
+import '../schedule_bot/hero_countdown_widget.dart';
 
-class HomeFeedScreen extends StatelessWidget {
+class HomeFeedScreen extends StatefulWidget {
   const HomeFeedScreen({super.key});
+
+  @override
+  State<HomeFeedScreen> createState() => _HomeFeedScreenState();
+}
+
+class _HomeFeedScreenState extends State<HomeFeedScreen> {
+  bool _isBannerVisible = false;
+  String? _dismissedNoticeId;
+  Stream<QuerySnapshot>? _feedStream;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeFeedStream();
+  }
+
+  // Dynamically load the user's batch to filter the feed correctly
+  Future<void> _initializeFeedStream() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      String userBatch = '23com'; // Default fallback
+
+      if (user != null) {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .get();
+        if (userDoc.exists) {
+          userBatch =
+              (userDoc.data() as Map<String, dynamic>)['batchId'] ?? '23com';
+        }
+      }
+
+      setState(() {
+        _feedStream = NoticeService().streamNotices(batchFilter: userBatch);
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint("Error loading feed stream: $e");
+      setState(() {
+        _feedStream = NoticeService().streamNotices(batchFilter: 'all');
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey[100],
-      appBar: AppBar(
-        title: const Text(
-          'SciSync Feed',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.teal,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        actions: [
-          // <-- 2. THE NEW SMART PROFILE BUTTON -->
-          GestureDetector(
-            onTap: () {
-              // Pushes the profile over the whole app, hiding the bottom bar!
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfileScreen()),
-              );
-            },
-            child: const Padding(
-              padding: EdgeInsets.only(right: 16.0),
-              child: CircleAvatar(
-                backgroundColor: Colors.white, // White circle on Teal AppBar
-                child: Icon(Icons.person, color: Colors.teal),
-              ),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            title: const Text(
+              'SciSync Feed',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-          ),
-        ],
-      ),
-
-      // <-- EVERYTHING BELOW REMAINS YOUR EXACT, WORKING FIRESTORE LOGIC -->
-      body: StreamBuilder<QuerySnapshot>(
-        stream: NoticeService().streamNotices(batchFilter: '2024 Batch'),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            debugPrint("🔥 FIREBASE ERROR: ${snapshot.error}");
-            return const Center(child: Text('Error loading notices.'));
-          }
-
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(child: Text('No notices found!'));
-          }
-
-          final notices = snapshot.data!.docs;
-
-          return Column(
-            children: [
-              // 1. The AI Summary Banner sits permanently at the top!
-              const Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: AiBannerWidget(),
-              ),
-
-              // 2. The Rest of the Feed ListView
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: notices.length,
-                  itemBuilder: (context, index) {
-                    var docId = notices[index].id;
-                    var data = notices[index].data() as Map<String, dynamic>;
-
-                    int likesCount = data['likes'] ?? 0;
-                    int heartsCount = data['hearts'] ?? 0;
-
-                    return _buildNoticeCard(
-                      docId: docId,
-                      title: data['title'] ?? 'No Title',
-                      body: data['description'] ?? 'No Description',
-                      tag: data['tag'] ?? 'NOTICE',
-                      likes: likesCount,
-                      hearts: heartsCount,
-                    );
-                  },
+            backgroundColor: Colors.teal,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            floating: true,
+            snap: true,
+            pinned: false,
+            actions: [
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                ),
+                child: const Padding(
+                  padding: EdgeInsets.only(right: 16.0),
+                  child: CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: Icon(Icons.person, color: Colors.teal),
+                  ),
                 ),
               ),
             ],
-          );
-        },
+          ),
+
+          // The wired-up Hero Countdown!
+          SliverToBoxAdapter(
+            child: HeroCountdownWidget(
+              onTap: () {
+                DefaultTabController.of(context).animateTo(0);
+              },
+            ),
+          ),
+
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _StickyBannerDelegate(
+              isVisible: _isBannerVisible,
+              child: Container(
+                color: Colors.grey[100],
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: AiBannerWidget(
+                  dismissedNoticeId: _dismissedNoticeId,
+                  onVisibilityChanged: (visible, docId) {
+                    setState(() {
+                      _isBannerVisible = visible;
+                      if (!visible && docId != null) {
+                        _dismissedNoticeId = docId;
+                      }
+                    });
+                  },
+                ),
+              ),
+            ),
+          ),
+
+          // StreamBuilder with safe loading handling
+          _isLoading || _feedStream == null
+              ? const SliverFillRemaining(
+                  child: Center(
+                    child: CircularProgressIndicator(color: Colors.teal),
+                  ),
+                )
+              : StreamBuilder<QuerySnapshot>(
+                  stream: _feedStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const SliverFillRemaining(
+                        child: Center(
+                          child: CircularProgressIndicator(color: Colors.teal),
+                        ),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return const SliverFillRemaining(
+                        child: Center(child: Text('Error loading notices.')),
+                      );
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const SliverFillRemaining(
+                        child: Center(child: Text('No notices found!')),
+                      );
+                    }
+
+                    final notices = snapshot.data!.docs;
+
+                    return SliverPadding(
+                      padding: const EdgeInsets.all(16.0),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          var docId = notices[index].id;
+                          var data =
+                              notices[index].data() as Map<String, dynamic>;
+                          int likesCount = data['likes'] ?? 0;
+                          int heartsCount = data['hearts'] ?? 0;
+
+                          return _buildNoticeCard(
+                            context: context,
+                            docId: docId,
+                            title: data['title'] ?? 'No Title',
+                            body: data['description'] ?? 'No Description',
+                            tag: data['tag'] ?? 'NOTICE',
+                            likes: likesCount,
+                            hearts: heartsCount,
+                          );
+                        }, childCount: notices.length),
+                      ),
+                    );
+                  },
+                ),
+        ],
       ),
 
-      // <-- THE GLOWING SCIBOT BUTTON -->
       floatingActionButton: Container(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-              color: Colors.tealAccent.withValues(alpha: 0.6), // The AI Glow!
+              color: Colors.tealAccent.withValues(alpha: 0.6),
               blurRadius: 15,
               spreadRadius: 2,
             ),
           ],
         ),
         child: FloatingActionButton(
-          onPressed: () {
-            // FINALLY WIRED UP! Pushes to the SciBot Chat Screen
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SciBotScreen()),
-            );
-          },
-          backgroundColor: Colors.teal[900], // Dark core
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SciBotScreen()),
+          ),
+          backgroundColor: Colors.teal[900],
           foregroundColor: Colors.white,
-          elevation: 0, // We set this to 0 so our custom glow takes over
-          child: const Icon(Icons.smart_toy, size: 28), // A cool robot icon
+          elevation: 0,
+          child: const Icon(Icons.smart_toy, size: 28),
         ),
       ),
     );
   }
 
-  // Notice Card Widget Layout (Unchanged)
   Widget _buildNoticeCard({
+    required BuildContext context,
     required String docId,
     required String title,
     required String body,
@@ -134,6 +212,25 @@ class HomeFeedScreen extends StatelessWidget {
     required int likes,
     required int hearts,
   }) {
+    String safeTag = tag.toUpperCase();
+
+    // Dynamic badge coloring based on notice type
+    Color badgeBg = Colors.red[100]!;
+    Color badgeFg = Colors.red;
+    if (safeTag == 'CANCELLED') {
+      badgeBg = Colors.red.shade900;
+      badgeFg = Colors.white;
+    } else if (safeTag == 'CA') {
+      badgeBg = const Color.fromARGB(255, 177, 240, 169)!;
+      badgeFg = const Color.fromARGB(255, 46, 151, 5);
+    } else if (safeTag == 'EXAM') {
+      badgeBg = Colors.orange[100]!;
+      badgeFg = Colors.orange.shade800;
+    } else if (safeTag == 'EVENT') {
+      badgeBg = Colors.purple[100]!;
+      badgeFg = Colors.purple.shade800;
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
@@ -154,39 +251,32 @@ class HomeFeedScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.red[100],
+              color: badgeBg,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              tag.toUpperCase(),
-              style: const TextStyle(
-                color: Colors.red,
+              safeTag,
+              style: TextStyle(
+                color: badgeFg,
                 fontWeight: FontWeight.bold,
                 fontSize: 12,
               ),
             ),
           ),
           const SizedBox(height: 12),
-
           Text(
             title,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
-
           Text(body, style: TextStyle(color: Colors.grey[700])),
-
-          // --- REACTION & ACTION BAR ---
           const SizedBox(height: 8),
           const Divider(height: 20, thickness: 1, color: Colors.black12),
-
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // 1. Left Side: The Reactions (Always visible)
               Row(
                 children: [
-                  // LIKE BUTTON
                   TextButton.icon(
                     onPressed: () =>
                         NoticeService().addReaction(docId, 'likes'),
@@ -206,7 +296,6 @@ class HomeFeedScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // HEART BUTTON
                   TextButton.icon(
                     onPressed: () =>
                         NoticeService().addReaction(docId, 'hearts'),
@@ -227,14 +316,9 @@ class HomeFeedScreen extends StatelessWidget {
                   ),
                 ],
               ),
-
-              // 2. Right Side: THE SMART AI UI LOGIC
               Builder(
                 builder: (context) {
-                  String safeTag = tag.toUpperCase();
-
                   if (safeTag == 'EXAM' || safeTag == 'CA') {
-                    // SCENARIO 1: Mandatory academic events! Show the automated text.
                     return Row(
                       children: const [
                         Icon(Icons.check_circle, color: Colors.green, size: 16),
@@ -250,11 +334,8 @@ class HomeFeedScreen extends StatelessWidget {
                       ],
                     );
                   } else if (safeTag == 'EVENT') {
-                    // SCENARIO 2: Optional events! Show the Add button.
                     return ElevatedButton.icon(
-                      onPressed: () {
-                        debugPrint("Add Event to Calendar clicked!");
-                      },
+                      onPressed: () {},
                       icon: const Icon(Icons.calendar_month, size: 18),
                       label: const Text("Add"),
                       style: ElevatedButton.styleFrom(
@@ -270,7 +351,6 @@ class HomeFeedScreen extends StatelessWidget {
                       ),
                     );
                   } else {
-                    // SCENARIO 3: General Notices / Updates. Show absolutely nothing!
                     return const SizedBox.shrink();
                   }
                 },
@@ -280,5 +360,43 @@ class HomeFeedScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _StickyBannerDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final bool isVisible;
+
+  _StickyBannerDelegate({required this.child, required this.isVisible});
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    if (!isVisible) {
+      return Offstage(
+        offstage: true,
+        child: OverflowBox(
+          minHeight: 0,
+          maxHeight: double.infinity,
+          alignment: Alignment.topCenter,
+          child: child,
+        ),
+      );
+    }
+    return SizedBox.expand(child: child);
+  }
+
+  @override
+  double get maxExtent => isVisible ? 130.0 : 0.0;
+
+  @override
+  double get minExtent => isVisible ? 130.0 : 0.0;
+
+  @override
+  bool shouldRebuild(covariant _StickyBannerDelegate oldDelegate) {
+    return child != oldDelegate.child || isVisible != oldDelegate.isVisible;
   }
 }

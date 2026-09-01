@@ -1,36 +1,64 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:async'; // We need this for the Timer!
+import 'dart:async';
+
+// 🧠 NEW: Global Memory! This string survives even when Flutter destroys the tab.
+String? _permanentlyDismissedDocId;
 
 class AiBannerWidget extends StatefulWidget {
-  const AiBannerWidget({super.key});
+  final String? dismissedNoticeId;
+  final Function(bool isVisible, String? docId) onVisibilityChanged;
+
+  const AiBannerWidget({
+    super.key,
+    required this.dismissedNoticeId,
+    required this.onVisibilityChanged,
+  });
 
   @override
   State<AiBannerWidget> createState() => _AiBannerWidgetState();
 }
 
 class _AiBannerWidgetState extends State<AiBannerWidget> {
-  String? _dismissedDocId;
   String? _currentlyShownDocId;
   Timer? _autoDismissTimer;
+  bool _isCurrentlyVisible = false;
+  late Stream<QuerySnapshot> _bannerStream;
 
-  // Cleanup the timer if the widget is destroyed so it doesn't cause memory leaks
+  @override
+  void initState() {
+    super.initState();
+    _bannerStream = FirebaseFirestore.instance
+        .collection('notices')
+        .orderBy('timestamp', descending: true)
+        .limit(1)
+        .snapshots();
+  }
+
   @override
   void dispose() {
     _autoDismissTimer?.cancel();
     super.dispose();
   }
 
+  void _notifyParent(bool isVisible, String? docId) {
+    if (_isCurrentlyVisible != isVisible) {
+      _isCurrentlyVisible = isVisible;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          widget.onVisibilityChanged(isVisible, docId);
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('notices')
-          .orderBy('timestamp', descending: true)
-          .limit(1)
-          .snapshots(),
+      stream: _bannerStream,
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          _notifyParent(false, null);
           return const SizedBox.shrink();
         }
 
@@ -38,26 +66,26 @@ class _AiBannerWidgetState extends State<AiBannerWidget> {
         var data = doc.data() as Map<String, dynamic>;
         var docId = doc.id;
 
-        // 1. Check if it's already been dismissed manually or by the timer
-        if (_dismissedDocId == docId) {
+        // 1. Check BOTH the Parent's memory AND our new Global Memory!
+        if (widget.dismissedNoticeId == docId ||
+            _permanentlyDismissedDocId == docId) {
+          _notifyParent(false, docId);
           return const SizedBox.shrink();
         }
 
-        // 2. The Auto-Vanish Logic!
-        // If this is a brand new notice we haven't set a timer for yet...
+        // 2. We have clearance to show it!
+        _notifyParent(true, docId);
+
+        // 3. Start Timer if it's a completely new notice
         if (_currentlyShownDocId != docId) {
           _currentlyShownDocId = docId;
-
-          // Cancel any old timer just in case
           _autoDismissTimer?.cancel();
 
-          // Start the 5-second countdown!
           _autoDismissTimer = Timer(const Duration(seconds: 10), () {
             if (mounted) {
-              setState(() {
-                // When the timer goes off, we mark it as "dismissed" so it vanishes
-                _dismissedDocId = docId;
-              });
+              // Timer finishes: Save this ID to global memory forever!
+              _permanentlyDismissedDocId = docId;
+              _notifyParent(false, docId);
             }
           });
         }
@@ -65,7 +93,6 @@ class _AiBannerWidgetState extends State<AiBannerWidget> {
         String summary =
             data['summary'] ?? data['description'] ?? 'New update available.';
 
-        // We wrap it in an AnimatedSize so it shrinks smoothly instead of instantly vanishing!
         return AnimatedSize(
           duration: const Duration(milliseconds: 300),
           child: Container(
@@ -106,7 +133,6 @@ class _AiBannerWidgetState extends State<AiBannerWidget> {
                     ],
                   ),
                 ),
-                // The Manual Dismiss 'X' Button
                 IconButton(
                   icon: const Icon(
                     Icons.close,
@@ -116,11 +142,10 @@ class _AiBannerWidgetState extends State<AiBannerWidget> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () {
-                    // If they click 'X', we cancel the timer early and hide it
                     _autoDismissTimer?.cancel();
-                    setState(() {
-                      _dismissedDocId = docId;
-                    });
+                    // Manual click: Save this ID to global memory forever!
+                    _permanentlyDismissedDocId = docId;
+                    _notifyParent(false, docId);
                   },
                 ),
               ],

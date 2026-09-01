@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 1. CRITICAL FOR TIMESTAMP!
 import '../firestore_data/notice_service.dart';
-import '../ai_notice/notice_parser.dart'; // Officially linked!
+import '../ai_notice/notice_parser.dart';
 
 class AdminUploadScreen extends StatefulWidget {
   const AdminUploadScreen({super.key});
@@ -13,66 +14,148 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
 
-  String _selectedBatch = 'All Students';
-  final List<String> _batches = [
-    'All Students',
-    '2022 Batch',
-    '2023 Batch',
-    '2024 Batch',
-  ];
+  // Controllers for precise schedule modifications
+  final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _timeController = TextEditingController();
 
-  // Loading spinner state
+  // 2. Mapped batch options to match system keys ('all', '23com', etc.)
+  final Map<String, String> _batchOptions = {
+    'All Students': 'all',
+    '2022 COM Batch (22com)': '22com',
+    '2023 COM Batch (23com)': '23com',
+    '2024 COM Batch (24com)': '24com',
+  };
+  String _selectedBatchKey = 'all';
+
   bool _isSubmitting = false;
 
   @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _dateController.dispose();
+    _timeController.dispose();
     super.dispose();
   }
 
-  // The Magic Database + AI Function
+  // --- NATIVE CALENDAR PICKER ---
+  Future<void> _selectDate(BuildContext context) async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(primary: Colors.teal),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedDate != null) {
+      setState(() {
+        _dateController.text =
+            "${pickedDate.year.toString().padLeft(4, '0')}-"
+            "${pickedDate.month.toString().padLeft(2, '0')}-"
+            "${pickedDate.day.toString().padLeft(2, '0')}";
+      });
+    }
+  }
+
+  // --- NATIVE TIME PICKER ---
+  Future<void> _selectTime(BuildContext context) async {
+    TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(primary: Colors.teal),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedTime != null) {
+      final hours = pickedTime.hour.toString().padLeft(2, '0');
+      final minutes = pickedTime.minute.toString().padLeft(2, '0');
+      setState(() {
+        _timeController.text = "$hours:$minutes";
+      });
+    }
+  }
+
+  // --- SUBMIT & AI PROCESSING LOGIC ---
   Future<void> _submitNotice() async {
     if (_titleController.text.isEmpty || _descriptionController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all fields!')),
+        const SnackBar(
+          content: Text('Please fill in the title and description!'),
+        ),
       );
       return;
     }
 
-    // 1. Turn on the loading spinner!
     setState(() => _isSubmitting = true);
 
     try {
-      // 2. Ask Lahiru's AI engine for the tag + summary!
+      // 1. Grab manual picker selections
+      String manualDate = _dateController.text.trim();
+      String manualTime = _timeController.text.trim();
+
+      // 2. Feed description AND picker context directly into Gemini
       final aiResult = await NoticeParser().analyzeNotice(
         title: _titleController.text,
-        description: _descriptionController.text,
+        description:
+            "${_descriptionController.text} (Context - Affected Date: $manualDate, Time: $manualTime)",
       );
 
-      // 3. Save it ALL to Firebase!
+      // 3. Prioritize manual picker values, fallback to AI extraction if blank
+      String finalDate = manualDate.isNotEmpty
+          ? manualDate
+          : (aiResult['affectedDate'] ?? '');
+
+      String finalTime = manualTime.isNotEmpty
+          ? manualTime
+          : (aiResult['affectedStartTime'] ?? '');
+
+      // 4. Save to Firebase Firestore with proper batch key and server timestamp
       await NoticeService().postNotice({
-        'title': _titleController.text,
-        'description': _descriptionController.text,
-        'targetBatch': _selectedBatch,
-        'tag': aiResult['tag'], // AI decides if it's an EXAM, EVENT, etc.
-        'summary': aiResult['summary'], // AI generated summary!
+        'title': _titleController.text.trim(),
+        'description': _descriptionController.text.trim(),
+        'targetBatch':
+            _selectedBatchKey, // Saves '23com', 'all', etc. accurately!
+        'tag': aiResult['tag'] ?? 'GENERAL',
+        'summary': aiResult['summary'] ?? '',
+        'affectedDate': finalDate,
+        'affectedStartTime': finalTime,
         'imageUrl': '',
         'likes': 0,
         'hearts': 0,
+        'timestamp':
+            FieldValue.serverTimestamp(), // Fixes feed sorting instantly!
       });
 
-      // 4. Success UI
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notice Posted Successfully!')),
+          const SnackBar(
+            content: Text('Notice Posted & Processed Successfully!'),
+          ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
-      debugPrint("Error saving to database: $e");
+      debugPrint("Error saving notice: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
-      // 5. Turn off the spinner
       if (mounted) {
         setState(() => _isSubmitting = false);
       }
@@ -105,7 +188,7 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
             TextField(
               controller: _titleController,
               decoration: InputDecoration(
-                hintText: "e.g., Data Structures Mid-Term",
+                hintText: "e.g., Data Structures Lecture Cancelled",
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -125,7 +208,7 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
               controller: _descriptionController,
               maxLines: 4,
               decoration: InputDecoration(
-                hintText: "Type the full event details here...",
+                hintText: "Type full details...",
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -133,6 +216,80 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
                   borderSide: BorderSide.none,
                 ),
               ),
+            ),
+            const SizedBox(height: 20),
+
+            // --- CLICKABLE DATE & TIME PICKER FIELDS ---
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Affected Date",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _dateController,
+                        readOnly: true,
+                        onTap: () => _selectDate(context),
+                        decoration: InputDecoration(
+                          hintText: "Select Date",
+                          suffixIcon: const Icon(
+                            Icons.calendar_today,
+                            color: Colors.teal,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Start Time",
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _timeController,
+                        readOnly: true,
+                        onTap: () => _selectTime(context),
+                        decoration: InputDecoration(
+                          hintText: "Select Time",
+                          suffixIcon: const Icon(
+                            Icons.access_time,
+                            color: Colors.teal,
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 20),
 
@@ -149,64 +306,27 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
               ),
               child: DropdownButtonHideUnderline(
                 child: DropdownButton<String>(
-                  value: _selectedBatch,
+                  value: _selectedBatchKey,
                   isExpanded: true,
-                  items: _batches.map((String batch) {
+                  items: _batchOptions.entries.map((entry) {
                     return DropdownMenuItem<String>(
-                      value: batch,
-                      child: Text(batch),
+                      value: entry.value, // Saves '23com', 'all', etc.
+                      child: Text(
+                        entry.key,
+                      ), // Displays readable text like '2023 COM Batch (23com)'
                     );
                   }).toList(),
                   onChanged: (String? newValue) {
                     setState(() {
-                      _selectedBatch = newValue!;
+                      _selectedBatchKey = newValue!;
                     });
                   },
                 ),
               ),
             ),
-            const SizedBox(height: 20),
-
-            const Text(
-              "Attach Image (Optional)",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            GestureDetector(
-              onTap: () {
-                debugPrint("Open Image Gallery!");
-              },
-              child: Container(
-                height: 100,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.teal.shade200, width: 2),
-                ),
-                child: const Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.add_photo_alternate,
-                      color: Colors.teal,
-                      size: 40,
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      "Tap to upload photo",
-                      style: TextStyle(
-                        color: Colors.teal,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
             const SizedBox(height: 40),
 
-            // Submit Button with AI Loading State!
+            // Submit Button
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -229,9 +349,9 @@ class _AdminUploadScreenState extends State<AdminUploadScreen> {
                         ),
                       )
                     : const Text(
-                        "Post Notice",
+                        "Post Notice & Update Schedules",
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
