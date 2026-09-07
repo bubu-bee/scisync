@@ -22,35 +22,51 @@ class AuthService {
     required String password,
     required String name,
     required String batch,
-    required String badgeNumber, // E.g., EUSL/TC/IS/2023/COM/1
+    required String badgeNumber, // E.g., 23com234
     required String nic, // Used for barcode verification
     required String dob, // Date of Birth
   }) async {
     try {
-      // 1. Create the secure user in Firebase Auth
+      // --- 1. CHECK IF NIC IS ALREADY REGISTERED ---
+      final existingUserQuery = await _firestore
+          .collection('users')
+          .where('nic', isEqualTo: nic.trim())
+          .get();
+
+      if (existingUserQuery.docs.isNotEmpty) {
+        throw FirebaseAuthException(
+          code: 'nic-already-in-use',
+          message: 'An account with this NIC number is already registered.',
+        );
+      }
+
+      // 2. Create the secure user in Firebase Auth
       final cred = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // 2. Save their public profile data to the Firestore 'users' collection
+      // 3. Save their public profile data to the Firestore 'users' collection with unified keys
       if (cred.user != null) {
         await _firestore.collection('users').doc(cred.user!.uid).set({
           'name': name,
           'email': email,
-          'batch': batch,
+          'batchId':
+              batch, // <--- FIXED: Synchronized with HomeFeed & Admin screens
           'badgeNumber': badgeNumber,
-          'nic': nic,
+          'nic': nic.trim(),
           'dob': dob,
           'role': 'student',
-
-          // VERIFICATION FLAG (Nimantha's scanner will change this to true later!)
+          'isAdmin':
+              false, // <--- ADDED: Explicitly initialized for admin checks
+          // VERIFICATION FLAG
           'isVerified': false,
 
-          // Optional Profile Fields
-          'linkedinUrl': null,
-          'bio': null,
-          'photoUrl': null,
+          // Optional Profile Fields (Synchronized with Cloudinary & Profile screen)
+          'linkedinUrl': '',
+          'bio': '',
+          'profileImageUrl':
+              '', // <--- FIXED: Synchronized with Cloudinary avatar renderers
           'createdAt': FieldValue.serverTimestamp(),
         });
       }

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // NEW: Required for dynamic user batch fetching
+import 'package:firebase_auth/firebase_auth.dart';
 import '../firestore_data/notice_service.dart';
 import 'ai_banner_widget.dart';
 import 'profile_screen.dart';
+import 'notifications_screen.dart'; // <--- Added import for the notifications screen
 import '../schedule_bot/scibot_screen.dart';
 import '../schedule_bot/hero_countdown_widget.dart';
 
 class HomeFeedScreen extends StatefulWidget {
-  const HomeFeedScreen({super.key});
+  final ValueChanged<int>? onNavigateTab;
+
+  const HomeFeedScreen({super.key, this.onNavigateTab});
 
   @override
   State<HomeFeedScreen> createState() => _HomeFeedScreenState();
@@ -63,38 +66,174 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
-            title: const Text(
-              'SciSync Feed',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
             backgroundColor: Colors.teal,
             foregroundColor: Colors.white,
             elevation: 0,
             floating: true,
             snap: true,
             pinned: false,
+            // --- NOTIFICATION BELL WITH RED DOT UNREAD INDICATOR ---
+            leading: StreamBuilder<DocumentSnapshot>(
+              stream: FirebaseAuth.instance.currentUser != null
+                  ? FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(FirebaseAuth.instance.currentUser!.uid)
+                        .snapshots()
+                  : const Stream.empty(),
+              builder: (context, userSnapshot) {
+                Timestamp? lastSeen = userSnapshot.data?.exists == true
+                    ? (userSnapshot.data!.data()
+                          as Map<String, dynamic>)['lastSeenNotifications']
+                    : null;
+
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('notices')
+                      .snapshots(),
+                  builder: (context, noticeSnapshot) {
+                    bool hasUnread = false;
+                    if (noticeSnapshot.hasData && lastSeen != null) {
+                      for (var doc in noticeSnapshot.data!.docs) {
+                        var data = doc.data() as Map<String, dynamic>;
+                        Timestamp? createdAt = data['createdAt'];
+                        if (createdAt != null &&
+                            createdAt.compareTo(lastSeen) > 0) {
+                          hasUnread = true;
+                          break;
+                        }
+                      }
+                    } else if (noticeSnapshot.hasData &&
+                        noticeSnapshot.data!.docs.isNotEmpty &&
+                        lastSeen == null) {
+                      hasUnread = true; // Never opened before, show indicator
+                    }
+
+                    return Stack(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.notifications_outlined),
+                          tooltip: 'Notifications',
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const NotificationsScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                        if (hasUnread)
+                          Positioned(
+                            right: 11,
+                            top: 11,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.teal,
+                                  width: 1.5,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                );
+              },
+            ),
             actions: [
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const ProfileScreen()),
-                ),
-                child: const Padding(
-                  padding: EdgeInsets.only(right: 16.0),
-                  child: CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: Icon(Icons.person, color: Colors.teal),
-                  ),
-                ),
+              // --- DYNAMIC STREAMBUILDER FOR SPLIT USER NAME & PROFILE AVATAR ---
+              StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseAuth.instance.currentUser != null
+                    ? FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(FirebaseAuth.instance.currentUser!.uid)
+                          .snapshots()
+                    : const Stream.empty(),
+                builder: (context, snapshot) {
+                  String profileImageUrl = '';
+                  String userName = '';
+                  if (snapshot.hasData && snapshot.data!.exists) {
+                    var data = snapshot.data!.data() as Map<String, dynamic>;
+                    profileImageUrl = data['profileImageUrl'] ?? '';
+                    userName = data['name'] ?? '';
+                  }
+
+                  // Split the name into first name and remaining name parts
+                  List<String> nameParts = userName.trim().split(
+                    RegExp(r'\s+'),
+                  );
+                  String firstName = nameParts.isNotEmpty ? nameParts[0] : '';
+                  String secondName = nameParts.length > 1
+                      ? nameParts.sublist(1).join(' ')
+                      : '';
+
+                  return GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const ProfileScreen()),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 16.0),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (userName.isNotEmpty) ...[
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  firstName,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                if (secondName.isNotEmpty)
+                                  Text(
+                                    secondName,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontWeight:
+                                          FontWeight.w300, // Lighter weight
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(width: 10),
+                          ],
+                          CircleAvatar(
+                            backgroundColor: Colors.white,
+                            backgroundImage: profileImageUrl.isNotEmpty
+                                ? NetworkImage(profileImageUrl)
+                                : null,
+                            child: profileImageUrl.isEmpty
+                                ? const Icon(Icons.person, color: Colors.teal)
+                                : null,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ),
 
-          // The wired-up Hero Countdown!
+          // The wired-up Hero Countdown with safe navigation handling
           SliverToBoxAdapter(
             child: HeroCountdownWidget(
               onTap: () {
-                DefaultTabController.of(context).animateTo(0);
+                if (widget.onNavigateTab != null) {
+                  widget.onNavigateTab!(1); // Switches to the Schedule tab
+                }
               },
             ),
           ),
@@ -169,6 +308,8 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                             tag: data['tag'] ?? 'NOTICE',
                             likes: likesCount,
                             hearts: heartsCount,
+                            affectedDate: data['affectedDate'] ?? '',
+                            imageUrl: data['imageUrl'] ?? '',
                           );
                         }, childCount: notices.length),
                       ),
@@ -211,6 +352,8 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
     required String tag,
     required int likes,
     required int hearts,
+    required String affectedDate,
+    required String imageUrl,
   }) {
     String safeTag = tag.toUpperCase();
 
@@ -221,7 +364,7 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
       badgeBg = Colors.red.shade900;
       badgeFg = Colors.white;
     } else if (safeTag == 'CA') {
-      badgeBg = const Color.fromARGB(255, 177, 240, 169)!;
+      badgeBg = const Color.fromARGB(255, 177, 240, 169);
       badgeFg = const Color.fromARGB(255, 46, 151, 5);
     } else if (safeTag == 'EXAM') {
       badgeBg = Colors.orange[100]!;
@@ -270,6 +413,34 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
           ),
           const SizedBox(height: 8),
           Text(body, style: TextStyle(color: Colors.grey[700])),
+
+          // --- CLOUDINARY ATTACHED IMAGE RENDERER (1:1 SQUARE) ---
+          if (imageUrl.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 1.0, // <--- Forces a strict 1:1 square ratio
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return Container(
+                      color: Colors.grey[200],
+                      alignment: Alignment.center,
+                      child: const CircularProgressIndicator(
+                        color: Colors.teal,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) =>
+                      const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ],
+
           const SizedBox(height: 8),
           const Divider(height: 20, thickness: 1, color: Colors.black12),
           Row(
@@ -318,7 +489,9 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
               ),
               Builder(
                 builder: (context) {
-                  if (safeTag == 'EXAM' || safeTag == 'CA') {
+                  if (safeTag == 'EXAM' ||
+                      safeTag == 'CA' ||
+                      safeTag == 'EVENT') {
                     return Row(
                       children: const [
                         Icon(Icons.check_circle, color: Colors.green, size: 16),
@@ -332,23 +505,6 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                           ),
                         ),
                       ],
-                    );
-                  } else if (safeTag == 'EVENT') {
-                    return ElevatedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.calendar_month, size: 18),
-                      label: const Text("Add"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.teal,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
                     );
                   } else {
                     return const SizedBox.shrink();

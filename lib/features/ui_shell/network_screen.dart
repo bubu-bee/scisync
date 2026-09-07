@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart'; // <--- 1. Import url_launcher
 
 class NetworkScreen extends StatefulWidget {
   const NetworkScreen({super.key});
@@ -13,6 +14,38 @@ class _NetworkScreenState extends State<NetworkScreen> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _isSearching = false;
+
+  // Helper method to safely launch URLs
+  Future<void> _openLinkedIn(String urlString) async {
+    try {
+      // Ensure the URL has a proper scheme (e.g., https://)
+      String formattedUrl = urlString.trim();
+      if (!formattedUrl.startsWith('http://') &&
+          !formattedUrl.startsWith('https://')) {
+        formattedUrl = 'https://$formattedUrl';
+      }
+
+      final Uri url = Uri.parse(formattedUrl);
+
+      // Launch external application (Browser or LinkedIn App)
+      bool launched = await launchUrl(
+        url,
+        mode: LaunchMode.externalApplication,
+      );
+
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open LinkedIn link.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error opening link: $e')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -139,6 +172,8 @@ class _NetworkScreenState extends State<NetworkScreen> {
     String name = data['name'] ?? 'Classmate';
     String badge = data['badgeNumber'] ?? 'Unknown Badge';
     String linkedin = data['linkedinUrl'] ?? '';
+    String profileImageUrl =
+        data['profileImageUrl'] ?? ''; // <--- Extracted profile image URL
     bool hasLinkedIn = linkedin.isNotEmpty;
 
     String initial = name.isNotEmpty ? name[0].toUpperCase() : 'C';
@@ -159,17 +194,25 @@ class _NetworkScreenState extends State<NetworkScreen> {
       ),
       child: Row(
         children: [
+          // --- DYNAMIC AVATAR RENDERER ---
           CircleAvatar(
             radius: 32,
             backgroundColor: Colors.teal[50],
-            child: Text(
-              initial,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.teal[800],
-              ),
-            ),
+            backgroundImage: profileImageUrl.isNotEmpty
+                ? NetworkImage(
+                    profileImageUrl,
+                  ) // Loads Cloudinary avatar if present
+                : null,
+            child: profileImageUrl.isEmpty
+                ? Text(
+                    initial,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.teal[800],
+                    ),
+                  )
+                : null,
           ),
           const SizedBox(width: 16),
 
@@ -213,7 +256,7 @@ class _NetworkScreenState extends State<NetworkScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () {
                       if (hasLinkedIn) {
-                        debugPrint("Opening LinkedIn: $linkedin");
+                        _openLinkedIn(linkedin); // <--- Triggers URL launcher
                       }
                     },
                     icon: Icon(
